@@ -2,8 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService } from './auth.service';
 import { JwtService } from '@nestjs/jwt';
 import { getModelToken } from '@nestjs/mongoose';
-import { User } from './user.model';
+import { User } from './user/user.schema';
 import * as bcrypt from 'bcrypt';
+import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import { RegisterDTO } from './dto/register.dto';
 
 // Mock dependencies
 const mockUserModel = {
@@ -49,13 +51,15 @@ describe('AuthService', () => {
   });
 
   describe('register', () => {
-    it('should successfully register a new user', async () => {
-      const userData = {
-        username: 'testuser',
-        password: 'password123',
-        email: 'test@example.com',
-      };
+    const userData: RegisterDTO = {
+      username: 'testuser',
+      password: 'password123',
+      email: 'test@example.com',
+      firstName: 'Test',
+      lastName: 'User',
+    };
 
+    it('should successfully register a new user', async () => {
       mockUserModel.findOne.mockResolvedValue(null);
       mockUserModel.create.mockResolvedValue(userData);
 
@@ -75,26 +79,21 @@ describe('AuthService', () => {
     });
 
     it('should throw an error if user already exists', async () => {
-      const userData = {
-        username: 'existinguser',
-        password: 'password123',
-        email: 'existing@example.com',
-      };
-
       mockUserModel.findOne.mockResolvedValue(userData);
 
-      await expect(authService.register(userData)).rejects.toThrow('User already exists');
+      await expect(authService.register(userData)).rejects.toThrow(ConflictException);
     });
   });
 
   describe('login', () => {
-    it('should successfully login with correct credentials', async () => {
-      const loginData = {
-        username: 'testuser',
-        password: 'password123',
-      };
+    const loginData = {
+      username: 'testuser',
+      password: 'password123',
+    };
 
+    it('should successfully login with correct credentials', async () => {
       const mockUser = {
+        id: 'user123',
         username: 'testuser',
         password: await bcrypt.hash('password123', 10),
       };
@@ -109,15 +108,21 @@ describe('AuthService', () => {
       expect(result).toEqual({ token: 'faketoken' });
     });
 
-    it('should throw an error for invalid credentials', async () => {
-      const loginData = {
-        username: 'testuser',
-        password: 'wrongpassword',
-      };
-
+    it('should throw an error for non-existent user', async () => {
       mockUserModel.findOne.mockResolvedValue(null);
 
-      await expect(authService.login(loginData)).rejects.toThrow('Invalid credentials');
+      await expect(authService.login(loginData)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw an error for incorrect password', async () => {
+      const mockUser = {
+        username: 'testuser',
+        password: await bcrypt.hash('differentpassword', 10),
+      };
+
+      mockUserModel.findOne.mockResolvedValue(mockUser);
+
+      await expect(authService.login(loginData)).rejects.toThrow(UnauthorizedException);
     });
   });
 });
